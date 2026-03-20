@@ -33,6 +33,13 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# secrets / credentials
+client_secret*.json
+*.credentials.json
+
+# n8n workflow exports
+n8n_*.json
+
 # vercel
 .vercel
 
