@@ -1,0 +1,832 @@
+{
+  "name": "X(Twitter) 商業靈感爬蟲",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -544,
+        48
+      ],
+      "id": "2fe30626-2b8e-4f33-9449-3e2b59a71a09",
+      "name": "When clicking ‘Test workflow’"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/kaitoeasyapi~twitter-x-data-tweet-scraper-pay-per-result-cheapest/run-sync?token=YOUR_APIFY_API_TOKEN",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n    \"lang\": \"en\",\n    \"maxItems\": 15,\n    \"min_faves\": 80,\n    \"min_replies\": 25,\n    \"min_retweets\": 10,\n    \"queryType\": \"Top\",\n    \"searchTerms\": [\n        \"vibe coding projects\",\n        \"buildinpublic ai\",\n        \"micro SaaS ai\",\n        \"indie hacker mrr\",\n        \"ai agent MVP\",\n        \"n8n automation workflow\",\n        \"business agent\",\n        \"browser-use agent\",\n        \"AI Agent Business Solution\",\n        \"Local LLM application\",\n        \"openclaw project\"\n    ],\n    \"since\": \"{{ $json.since }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        272,
+        0
+      ],
+      "id": "3e59626e-cca5-48c9-bd3c-a6e541c6fbe1",
+      "name": "Scrape X(Twitter) Data"
+    },
+    {
+      "parameters": {
+        "url": "https://api.apify.com/v2/acts/kaitoeasyapi~twitter-x-data-tweet-scraper-pay-per-result-cheapest/runs/last/dataset/items?token=YOUR_APIFY_API_TOKEN",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        0
+      ],
+      "id": "bee51676-cd1a-43a4-8551-0d71e5fa5898",
+      "name": "Get Latest Apify Run"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.filter(item => {\n  const metrics = item.json.metrics || {};\n  const likes = metrics.likes || 0;\n  const replies = metrics.replies || 0;\n\n  return (likes + replies > 40) && (likes > 30) && (replies > 8);\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        -384
+      ],
+      "id": "70f44ca0-8c2e-4ec5-81c4-8767aa2672d5",
+      "name": "Filter by Min Likes and Replies"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);\nconst since = twoDaysAgo.toISOString().split('T')[0] + \"_00:00:00_UTC\";\n\nreturn [\n  {\n    json: {\n      since: since\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        0
+      ],
+      "id": "7b40e2e3-c7e1-4e0f-9e11-02b47a567fff",
+      "name": "Set Query Start Time"
+    },
+    {
+      "parameters": {
+        "jsCode": "function formatDate(dateString) {\n  return new Date(dateString).toLocaleString('en-US', { timeZone: 'UTC' });\n}\n\nfunction extractMediaUrls(tweet) {\n  const mediaArray = tweet.extendedEntities?.media || [];\n\n  return mediaArray.map(mediaItem => {\n    // 優先用 media_results 裡的 result.media_url_https\n    const fromResult = mediaItem.media_results?.result?.media_url_https;\n    // fallback 用直接存在 mediaItem 裡的 media_url_https\n    const fallback = mediaItem.media_url_https;\n\n    return fromResult || fallback;\n  }).filter(Boolean); // 過濾掉 null/undefined\n}\n\nconst tweets = items.map(item => {\n  const t = item.json;\n\n  const mediaUrls = extractMediaUrls(t);\n\n  return {\n    tweetText: t.text || '',\n    tweetUrl: t.twitterUrl || t.url || '',\n    author: {\n      name: t.author?.name || '',\n      username: t.author?.userName || '',\n      profileUrl: t.author?.twitterUrl || '',\n      profileImage: t.author?.profilePicture || '',\n      verified: t.author?.isVerified || false,\n      followers: t.author?.followers || 0,\n      bio: t.author?.profile_bio?.description || '',\n    },\n    metrics: {\n      likes: t.likeCount || 0,\n      retweets: t.retweetCount || 0,\n      replies: t.replyCount || 0,\n      quotes: t.quoteCount || 0,\n      views: t.viewCount || 0,\n      bookmarks: t.bookmarkCount || 0,\n    },\n    createdAt: formatDate(t.createdAt),\n    lang: t.lang || 'und',\n    isReply: t.isReply || false,\n    isPinned: t.isPinned || false,\n    media: mediaUrls,\n  };\n});\n\nreturn tweets.map(t => ({ json: t }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        0
+      ],
+      "id": "d21daa33-0345-4b89-9535-14caffda16b6",
+      "name": "Organize keys"
+    },
+    {
+      "parameters": {
+        "jsCode": "const timeframeMs = 2.5 * 24 * 60 * 60 * 1000; // 你改成了 3 天，這很精準\nconst now = new Date();\nconst existingUrls = new Set($(\"Get Existing Record URLs\").first().json.urls);  \nconst MIN_SCORE_THRESHOLD = 100; // 門檻設定：例如至少要有連結 + 一個關鍵字，或是有一定互動\nconst MAX_OUTPUT_COUNT = 40;    // 只取最強的前 30 則，避免 AI 運算過載\n\nconst results = items\n  .map(item => {\n    const t = item.json;\n    const createdAt = new Date(t.createdAt);\n    const isWithinTimeframe = (now - createdAt <= timeframeMs);\n    \n    // 1. 基礎社群互動分\n    let socialScore = (t.metrics.likes || 0) * 1 + \n                      (t.metrics.replies || 0) * 1.5 + \n                      (t.metrics.retweets || 0) * 2 +\n                      (t.metrics.bookmarks || 0) * 3;\n\n    // 2. 內容加權分\n    let qualityScore = 0;\n\n    const lowerText = t.tweetText.toLowerCase();\n\n    const totalScore = socialScore + qualityScore;\n\n    return {\n      ...t,\n      totalScore,\n      isRecent: isWithinTimeframe\n    };\n  })\n  // --- 這裡開始是真正的 Filter 邏輯 ---\n  .filter(tweet => {\n    // 條件 A：必須在時間範圍內\n    if (!tweet.isRecent) return false;\n\n    // 條件 B：分數必須高於門檻 (過濾掉完全沒人理且沒內容的推文)\n    if (tweet.totalScore < MIN_SCORE_THRESHOLD) return false;\n\n    // 條件 C：排除內容過短的廢文 (例如小於 15 個字且沒有連結)\n    if (tweet.tweetText.length < 15 && !tweet.tweetText.includes('http')) return false;\n\n    // 條件 D：排除已存在資料庫的貼文\n    if (!existingUrls.has(tweet.tweetUrl)) return false;\n    \n    return true;\n  })\n  // 排序：分數最高的排前面\n  .sort((a, b) => b.totalScore - a.totalScore)\n  // 限制數量：只輸出最精華的部分\n  .slice(0, MAX_OUTPUT_COUNT)\n  .map(tweet => ({ json: tweet }));\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        256
+      ],
+      "id": "431b15d7-9100-45d2-8038-53b7cc0b2653",
+      "name": "Filter out old tweets"
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeHtml(str) {\n  return str?.replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\").replace(/\\n/g, \"<br>\") || '';\n}\n\nconst htmlBlocks = items.map(item => {\n  const t = item.json;\n  const author = t.author || {};\n  const metrics = t.metrics || {};\n  const media = t.media || [];\n\n  const mediaBlock = media.length > 0\n    ? `\n      <div style=\"margin-top:12px; text-align:center;\">\n        ${media.map(url => `<img src=\"${url}\" style=\"max-width:100%; max-height:400px; border-radius:12px; margin:10px auto; display:block;\">`).join('')}\n      </div>\n    `\n    : '';\n\n  return `\n    <div style=\"border:1px solid #e6ecf0; border-radius:16px; padding:20px; margin-bottom:30px; font-family:Helvetica, Arial, sans-serif; background:#ffffff; max-width:700px; margin:auto;\">\n      <!-- Author Section -->\n      <div style=\"display:flex; align-items:center; gap:12px; margin-bottom:12px;\">\n        <img src=\"${author.profileImage}\" width=\"48\" height=\"48\" style=\"border-radius:50%; border:1px solid #ccc;\">\n        <div>\n          <a href=\"${author.profileUrl}\" target=\"_blank\" style=\"text-decoration:none; color:#0f1419; font-weight:bold; font-size:16px;\">@${author.username}</a>\n          <div style=\"font-size:13px; color:#536471;\">${escapeHtml(author.bio)}</div>\n        </div>\n      </div>\n\n      <!-- Tweet Text -->\n      <div style=\"font-size:15px; color:#0f1419; line-height:1.6; margin-bottom:12px;\">\n        ${escapeHtml(t.tweetText)}\n      </div>\n\n      <!-- Media -->\n      ${mediaBlock}\n\n      <!-- Tweet Actions -->\n      <div style=\"font-size:14px; color:#536471; margin-top:12px; display:flex; flex-wrap:wrap; gap:16px;\">\n        <span>❤️ <strong>${metrics.likes}</strong> Likes</span>\n        <span>💬 <strong>${metrics.replies}</strong> Replies</span>\n        <span>🔁 <strong>${metrics.retweets}</strong> Retweets</span>\n        <span>👁️ <strong>${metrics.views}</strong> Views</span>\n      </div>\n\n      <!-- Timestamp + Link -->\n      <div style=\"margin-top:12px; font-size:13px; color:#657786;\">\n        🕒 ${t.createdAt} · <a href=\"${t.tweetUrl}\" target=\"_blank\" style=\"color:#1da1f2; text-decoration:none;\">View on Twitter</a>\n      </div>\n    </div>\n  `;\n});\n\nreturn [\n  {\n    json: {\n      html: htmlBlocks.join('\\n')\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        -384
+      ],
+      "id": "8c15004c-24f0-4661-b762-f7129c9a1c6f",
+      "name": "Wrap with HTML"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                2,
+                4,
+                6
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -576,
+        -192
+      ],
+      "id": "e141f766-d1dc-47cf-a0bb-1b2c6c1df426",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_EMAIL@example.com",
+        "subject": "={{ new Date().toISOString().split('T')[0] + ' X(Twitter) 商業機會報告' }}",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        656,
+        -384
+      ],
+      "id": "025528e9-99c6-4d29-a5ab-c938980e8e0f",
+      "name": "Send a message",
+      "webhookId": "2bbb63fc-465d-4e8e-ad59-fd1197134edc",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "AI Lanrenbao Gmail Creds"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "score-check",
+              "leftValue": "={{ $json.output.total_score }}",
+              "rightValue": 75,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8aa12121-982b-47a2-813a-ae560c243551",
+      "name": "Filter High Potential",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1216,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "model": "google/gemini-2.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        128,
+        480
+      ],
+      "id": "e3fc004b-a55e-4e32-ad96-01601dc3c7ec",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "YOUR_OPENROUTER_CREDENTIAL_ID",
+          "name": "OpenRouter account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputText": "=你是一位 AI 商業應用築選專家。請判斷以下 X 貼文是否與「AI 商業應用」相關。\n\n相關的定義包括：\n- AI 自動化、AI Agent 應用（包含 n8n、Make.com、Zapier 等工具）\n- 用 AI 解決商業問題（marketing、HR、sales、房仲、醫療、教育、小商家等）\n- SaaS / Micro SaaS / 創業點子與商業模式\n- No-code / Low-code 自動化工具應用\n- 對非技術背景的人用 AI 解決痛點的商業機會\n- 用 AI 提升生產力、效率的實際案例\n\n不相關的例子：\n- 純技術討論（模型訓練、演算法研究、benchmark）且無商業應用\n- 迷因、搞笑、廢文\n- 純產品發表無商業洞察\n- AI 藝術、AI 生成圖片等娛樂性內容\n\n---\n內容：{{ $json.tweetText }}\n\n---\n🧾 Output:\nReturn \"true\" if the video is relevant to AI商業應用\nReturn \"false\" if the video is not relevant to AI商業應用",
+        "categories": {
+          "categories": [
+            {
+              "category": "true"
+            },
+            {
+              "category": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "typeVersion": 1,
+      "position": [
+        192,
+        256
+      ],
+      "id": "f4a6d50e-6f12-4221-8e5e-4425080ad26f",
+      "name": "AI影片分類器",
+      "notesInFlow": true,
+      "notes": "使用 LLM 判斷影片是否為實用 AI 工具內容 (is_tool / not_tool)。僅 is_tool 類別會進入下一步。分類規則可在 inputText 中修改。"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=**待評估點子：**\n內容：{{ $json.tweetText }}\nauthor：{{ $json.author.name }}\nusername: {{ $json.author.username }}\nfollowers: {{ $json.author.followers }}\nlikes: {{ $json.metrics.likes }}\nretweets: {{ $json.metrics.retweets }}\nreplies: {{ $json.metrics.replies }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=你是一位專精於精實創業（Lean Startup）與台灣中小企業數位轉型的商業分析師。請針對以下來自 Reddit 的點子進行評分（每個維度 1-10 分），並且生成一句中文15-20字中文標題，以及創業靈感分類，並以嚴格 JSON 格式回覆。\n\n🚀 創業點子評鑑標準 (Visual Scoring Guide)\n評分標準與權重（總分 100）：\n\n1. 精實可行性 (Lean Feasibility) — 權重 2.0\n核心邏輯： 1-2 名工程師、一個月內 MVP、低資本支出。\n1 分 (極難實現)： 需要研發硬體設備、申請複雜的政府執照、或是需要處理海量數據進行模型預訓練。開發週期通常超過 6 個月，且初期需要投入百萬台幣以上的資金。\n10 分 (極易實現)： 完全基於現有的 API（如 OpenAI, Stripe, Line Pay）開發，純軟體 SaaS。前端可用現成模板，後端邏輯單純。1 名工程師在兩週內即可做出核心功能，開發成本幾乎為零。\n\n2. 商業變現力 (Commerciality) — 權重 2.5\n核心邏輯： 商業模式清晰、客戶付費意願高。\n1 分 (難變現)： 屬於「維他命」型產品（有它很好，沒它也沒差）。目標客群不明確，或是需要極大規模的使用者基數才能開始廣告變現（如通訊軟體）。\n10 分 (易變現)： 屬於「止痛藥」型產品。直接幫客戶賺錢或省錢。商業模式是清晰的訂閱制 (SaaS) 或按次計費，客戶（如診所、餐廳）有明確的編列預算來解決這個問題。\n\n3. 創新與差異化 (Novelty) — 權重 1.5\n核心邏輯： 獨特切入點、比現有大型軟體更靈活。\n1 分 (紅海市場)： 市場上已有數十個成熟的競品（如一般的 POS 系統、待辦清單 App）。進入門檻低，最終只能陷入價格戰，且沒有獨特的 AI 應用。\n10 分 (藍海市場)： 運用最新的 AI 技術（如 VLM 或 Agent 工作流）去解決一個長期被忽略、或一直用低效人力處理的老問題。或是將國外剛興起的模式，首創地帶入特定垂直產業。\n\n4. 社群吸引力 (Social Media Appeal) — 權重 1.5\n核心邏輯： 具備話題性、易引起開發者/行銷圈共鳴。\n1 分 (枯燥無味)： 過於後端的基礎設施或過於專業的 B2B 流程，很難用一張截圖或一段 50 字的短文解釋其價值，無法引起非專業人士的興趣。\n10 分 (病毒式潛力)： 產品具有強大的「視覺衝擊」或「強烈痛點共鳴」。發文能引發討論（例如：幫老闆省掉一個行政人力的機器人），且容易在開發者圈引發「這怎麼做的？」的技術討論。\n\n5. 在地化痛點契合度 (Taiwan Market) — 權重 2.5\n核心邏輯： 解決台灣特定族群（缺工、數位化低、報表繁瑣）的痛點。\n1 分 (不符國情)： 解決的是美國稅法、或地廣人稀國家的物流問題。在台灣的法規、使用習慣（如台灣人超愛 Line）或產業結構下完全不適用。\n10 分 (完全契合)： 精準擊中台灣現狀，如：解決餐飲業嚴重缺工的 AI 點餐、針對台灣診所繁瑣的掛號流程優化、或是將台灣小商家常用的 LINE 官方帳號變成全自動 AI 助理。\n\n總分計算公式： (可行性×2.0) + (商業性×2.0) + (新穎性×1.5) + (Threads吸引力×1.5) + (台灣市場×3.0)\n\n除了評分以外，你還需要幫我生成15-20字靈感中文標題，並且針對這個創業點子分類。一個創業點子可以有多種類別(至多三個，最少一個)。請幫我把它們用一個列表組合起來。只能包含以下類別：如果都不屬於的話，請用“其他”。\n\n15-20字中文標題: 幫我根據以下內容生成一個可以總結這個 AI 商業機會的中文標題，大概15-20個字\n範例：\n(1) 整合碎片化社交平台API提供企業自動化行銷訂閱服務\n(2) AI驅動求職自動化工具解決人力銀行投遞效率與媒合痛點\n\n AI 創業點子分類：                                                                         \n  - SaaS工具 — SaaS 產品、訂閱制軟體                                                                            \n  - 行銷自動化 — 社群管理、內容行銷、SEO                                                                        \n  - 開發者工具 — API、SDK、開發輔助                                                                           \n  - 教育知識 — 課程、教學、知識付費                                                                             \n  - 電商零售 — 電商工具、零售解決方案                                                                         \n  - 求職招聘 — 求職、HR、人才媒合\n  - 內容創作 — 影片、寫作、設計工具\n  - 客服溝通 — 客服系統、聊天機器人\n  - 數據分析 — 數據工具、商業智慧\n  - 諮詢服務 — 顧問、審計、專業服務\n\n\n輸出格式（重要！！ 只能輸出JSON format, 不要任何不相關的文字符號）\n{\"feasibility_score\":0,\"commerciality_score\":0,\"novelty_score\":0,\"threads_appeal_score\":0,\"taiwan_market_score\":0,\"total_score\":0,\"summary\":\"繁體中文3-5句重點摘要\",\"business_opportunity\":\"繁體中文200-300字商業機會分析，說明目標客群、解決的痛點、可能的商業模式、在台灣市場的機會\",\"threads_angle\":\"繁體中文50-100字Threads發文建議\", \"tags\": [\"SaaS工具\",\"內容創作\"], \"chinese_title\": \"AI驅動求職自動化工具解決人力銀行投遞效率與媒合痛點\"}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        544,
+        432
+      ],
+      "id": "ee7acda1-c382-4c40-b07b-62a87fe0db71",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": "google/gemini-3.1-flash-lite-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        480,
+        800
+      ],
+      "id": "38c30bd2-b233-4096-86e0-1e8c13e5188d",
+      "name": "OpenRouter Chat Model1",
+      "credentials": {
+        "openRouterApi": {
+          "id": "YOUR_OPENROUTER_CREDENTIAL_ID",
+          "name": "OpenRouter account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"feasibility_score\":0,\"commerciality_score\":0,\"novelty_score\":0,\"threads_appeal_score\":0,\"taiwan_market_score\":0,\"total_score\":0,\"summary\":\"繁體中文3-5句重點摘要\",\"business_opportunity\":\"繁體中文200-300字商業機會分析，說明目標客群、解決的痛點、可能的商業模式、在台灣市場的機會\",\"threads_angle\":\"繁體中文50-100字Threads發文建議\", \"tags\": [\"SaaS工具\",\"內容創作\"], \"chinese_title\": \"AI驅動求職自動化工具解決人力銀行投遞效率與媒合痛點\"}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        624,
+        640
+      ],
+      "id": "8cc79f8b-2174-4da8-9e25-efecf34064dd",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        992,
+        256
+      ],
+      "id": "099bb1d9-77d6-4f0b-9556-f973fe27c040",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Reddit 商業機會"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "工作表1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "日期": "={{ $json.createdAt }}",
+            "可行性": "={{ $json.output.feasibility_score }}",
+            "商業性": "={{ $json.output.commerciality_score }}",
+            "新穎性": "={{ $json.output.novelty_score }}",
+            "台灣市場適用性": "={{ $json.output.taiwan_market_score }}",
+            "社群吸引力": "={{ $json.output.threads_appeal_score }}",
+            "總分": "={{ $json.output.total_score }}",
+            "重點整理": "={{ $json.output.summary }}",
+            "商業機會分析": "={{ $json.output.business_opportunity }}",
+            "Threads切入角度": "={{ $json.output.threads_angle }}",
+            "原始URL": "={{ $json.tweetUrl }}",
+            "留言數": "={{ $json.metrics.replies }}",
+            "按讚數": "={{ $json.metrics.likes }}",
+            "類別": "={{ $json.output.tags }}",
+            "中文標題": "={{ $json.output.chinese_title }}",
+            "X連結": "={{ $json.tweetUrl }}",
+            "來源": "x"
+          },
+          "matchingColumns": [
+            "原始URL"
+          ],
+          "schema": [
+            {
+              "id": "日期",
+              "displayName": "日期",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "標題",
+              "displayName": "標題",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "中文標題",
+              "displayName": "中文標題",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "留言數",
+              "displayName": "留言數",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "按讚數",
+              "displayName": "按讚數",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "可行性",
+              "displayName": "可行性",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "商業性",
+              "displayName": "商業性",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "新穎性",
+              "displayName": "新穎性",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "社群吸引力",
+              "displayName": "社群吸引力",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "台灣市場適用性",
+              "displayName": "台灣市場適用性",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "總分",
+              "displayName": "總分",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "重點整理",
+              "displayName": "重點整理",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "商業機會分析",
+              "displayName": "商業機會分析",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Threads切入角度",
+              "displayName": "Threads切入角度",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "原始URL",
+              "displayName": "原始URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reddit連結",
+              "displayName": "Reddit連結",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "X連結",
+              "displayName": "X連結",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "FB連結",
+              "displayName": "FB連結",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Subreddit",
+              "displayName": "Subreddit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "類別",
+              "displayName": "類別",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "來源",
+              "displayName": "來源",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "94b68c58-4fed-4366-aeb4-fd3eb6b6e2dc",
+      "name": "Save to Google Sheets1",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1520,
+        240
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Reddit 商業機會"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "工作表1"
+        },
+        "options": {}
+      },
+      "id": "2dec294a-8922-47cd-94d2-1a8128d8604a",
+      "name": "Get Dataset",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -336,
+        -32
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();                                                                                                   \nconst urls = items.map(item => item.json['原始URL']).filter(url => url);\nreturn [{ json: { urls } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        -32
+      ],
+      "id": "6b97fc56-b4ee-4dad-af8b-ee806047092d",
+      "name": "Get Existing Record URLs"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Test workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape X(Twitter) Data": {
+      "main": [
+        [
+          {
+            "node": "Get Latest Apify Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest Apify Run": {
+      "main": [
+        [
+          {
+            "node": "Organize keys",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter by Min Likes and Replies": {
+      "main": [
+        [
+          {
+            "node": "Wrap with HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Query Start Time": {
+      "main": [
+        [
+          {
+            "node": "Scrape X(Twitter) Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Organize keys": {
+      "main": [
+        [
+          {
+            "node": "Filter out old tweets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter out old tweets": {
+      "main": [
+        [
+          {
+            "node": "AI影片分類器",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap with HTML": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter High Potential": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheets1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI影片分類器",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI影片分類器": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Structured Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Filter High Potential",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Dataset": {
+      "main": [
+        [
+          {
+            "node": "Get Existing Record URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing Record URLs": {
+      "main": [
+        [
+          {
+            "node": "Set Query Start Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "297dbd29-8ae4-4e48-ac6a-28ea90c7ef7f",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "Dku9YBHoFIMMAgpr",
+  "tags": []
+}

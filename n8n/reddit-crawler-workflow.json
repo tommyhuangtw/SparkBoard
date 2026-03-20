@@ -1,0 +1,633 @@
+{
+    "nodes": [
+      {
+        "parameters": {
+          "jsCode": "// const existingUrls = new Set($(\"Get Existing Record URLs\").first().json.urls || []);  \nconst existingUrls = new Set();  \nconst now = Date.now();\nconst twoDaysInMs = 10 * 24 * 60 * 60 * 1000;\n\n// 合併所有 items 的 children 並去重，同時統計來源\nconst sourceNames = ['創業類', 'AI類', 'Builder類'];\nconst stats = [];\nconst allChildren = [];\nconst seen = new Set();\n\nfor (let i = 0; i < items.length; i++) {\n  const children = items[i].json.data?.children || [];\n  let count = 0;\n  for (const child of children) {\n    const id = child.data?.id;\n    if (id && !seen.has(id)) {\n      seen.add(id);\n      allChildren.push(child);\n      count++;\n    }\n  }\n  stats.push(`${sourceNames[i] || 'Source ' + i}: ${children.length} 筆 (去重後新增 ${count} 筆)`);\n}\n\n// 統計輸出到 console\nconsole.log(`📊 來源統計：${stats.join(' | ')} | 合併去重: ${allChildren.length} 筆`);\n\n// 篩選 + 排序 + 取前 40\nconst filtered = allChildren\n  .filter(post => {\n    const createdTime = post.data.created_utc * 1000;\n    const totalScore = post.data.score + post.data.num_comments;\n    const permalink = `https://www.reddit.com${post.data.permalink}`;\n    if (existingUrls.has(permalink)) return false;\n    return now - createdTime <= twoDaysInMs && totalScore > 80;\n  })\n  .sort((a, b) => {\n    const scoreA = a.data.score + a.data.num_comments;\n    const scoreB = b.data.score + b.data.num_comments;\n    return scoreB - scoreA;\n  })\n  .slice(0, 40);\n\nconsole.log(`📊 符合條件: ${filtered.length} 筆 (2天內, score+comments>80, top 40)`);\n\nreturn filtered.map(post => {\n  const p = post.data;\n  return {\n    json: {\n      title: p.title,\n      selftext: p.selftext,\n      upvotes: p.score,\n      url: p.url,\n      comments: p.num_comments,\n      author: p.author,\n      subreddit: p.subreddit,\n      permalink: `https://www.reddit.com${p.permalink}`,\n      created_time: new Date(p.created_utc * 1000).toISOString(),\n    }\n  };\n});\n"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -128,
+          112
+        ],
+        "id": "36e63a3a-9716-44b9-b868-d4e11b4490eb",
+        "name": "Code"
+      },
+      {
+        "parameters": {
+          "url": "https://oauth.reddit.com/r/SideProject+Business_Ideas+ProductManagement+solopreneurs+IndieHackers+NoCode+Passive_Income/top",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "redditOAuth2Api",
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "t",
+                "value": "week"
+              },
+              {
+                "name": "limit",
+                "value": "500"
+              }
+            ]
+          },
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "my-n8n-bot"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -576,
+          -80
+        ],
+        "id": "3669a3ba-44a5-4470-8403-48fb140c364b",
+        "name": "Reddit Search",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 5000,
+        "credentials": {
+          "redditOAuth2Api": {
+            "id": "YOUR_REDDIT_CREDENTIAL_ID",
+            "name": "Reddit account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "weeks",
+                "triggerAtDay": [
+                  1,
+                  3,
+                  5,
+                  0
+                ],
+                "triggerAtHour": 7
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          -1248,
+          112
+        ],
+        "id": "496a6461-90fb-45b1-9ad1-5108dd8b2340",
+        "name": "Schedule Trigger"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "version": 2,
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "id": "score-check",
+                "leftValue": "={{ $json.output.total_score }}",
+                "rightValue": 70,
+                "operator": {
+                  "type": "number",
+                  "operation": "gte"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "filter-scores-001",
+        "name": "Filter High Potential",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1120,
+          112
+        ]
+      },
+      {
+        "parameters": {
+          "url": "https://oauth.reddit.com/r/AI_Agents+AIautomation+ChatGPTCoding+PromptEngineering+LocalLLaMA/top",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "redditOAuth2Api",
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "t",
+                "value": "week"
+              },
+              {
+                "name": "limit",
+                "value": "500"
+              }
+            ]
+          },
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "my-n8n-bot"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "reddit-search-2",
+        "name": "Reddit Search AI",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -576,
+          112
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 5000,
+        "credentials": {
+          "redditOAuth2Api": {
+            "id": "YOUR_REDDIT_CREDENTIAL_ID",
+            "name": "Reddit account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "url": "https://oauth.reddit.com/r/SaaS+buildinpublic+microsaas+Automate+n8n/top",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "redditOAuth2Api",
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "t",
+                "value": "week"
+              },
+              {
+                "name": "limit",
+                "value": "500"
+              }
+            ]
+          },
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "my-n8n-bot"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "reddit-search-3",
+        "name": "Reddit Search Builder",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -576,
+          304
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 5000,
+        "credentials": {
+          "redditOAuth2Api": {
+            "id": "YOUR_REDDIT_CREDENTIAL_ID",
+            "name": "Reddit account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "numberInputs": 3
+        },
+        "id": "merge-results-001",
+        "name": "Merge Results",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3,
+        "position": [
+          -352,
+          96
+        ]
+      },
+      {
+        "parameters": {
+          "model": "google/gemini-2.5-flash-lite",
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+        "typeVersion": 1,
+        "position": [
+          176,
+          336
+        ],
+        "id": "f58f2ded-ab39-4697-ac29-7ac0a1b99375",
+        "name": "OpenRouter Chat Model",
+        "credentials": {
+          "openRouterApi": {
+            "id": "YOUR_OPENROUTER_CREDENTIAL_ID",
+            "name": "OpenRouter account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "inputText": "=你是一位 AI 商業應用築選專家。請判斷以下 Reddit 貼文是否與「AI 商業應用」相關。\n\n相關的定義包括：\n- AI 自動化、AI Agent 應用（包含 n8n、Make.com、Zapier 等工具）\n- 用 AI 解決商業問題（marketing、HR、sales、房仲、醫療、教育、小商家等）\n- SaaS / Micro SaaS / 創業點子與商業模式\n- No-code / Low-code 自動化工具應用\n- 對非技術背景的人用 AI 解決痛點的商業機會\n- 用 AI 提升生產力、效率的實際案例\n\n不相關的例子：\n- 純技術討論（模型訓練、演算法研究、benchmark）且無商業應用\n- 迷因、搞笑、廢文\n- 純產品發表無商業洞察\n- AI 藝術、AI 生成圖片等娛樂性內容\n\n---\n標題：{{ $json.title }}\n內容：{{ $json.selftext }}\n社群：r/{{ $json.subreddit }}\n\n---\nReturn \"true\" if relevant to AI商業應用\nReturn \"false\" if not relevant",
+          "categories": {
+            "categories": [
+              {
+                "category": "true"
+              },
+              {
+                "category": "false"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.textClassifier",
+        "typeVersion": 1,
+        "position": [
+          96,
+          112
+        ],
+        "id": "f137d7fd-e521-499c-8cfc-f0bca9090fb7",
+        "name": "AI Content Classifier"
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "=**待評估點子：**\n標題：{{ $json.title }}\n內容：{{ $json.selftext }}\n社群：r/{{ $json.subreddit }}\nUpvotes：{{ $json.upvotes }}\n留言數：{{ $json.comments }}\n",
+          "hasOutputParser": true,
+          "options": {
+            "systemMessage": "=你是一位專精於精實創業（Lean Startup）與台灣中小企業數位轉型的商業分析師。請針對以下來自 Reddit 的點子進行評分（每個維度 1-10 分），並以嚴格 JSON 格式回覆。\n\n評分標準與權重（總分 100）：\n\n1. 精實可行性 (Lean Feasibility) — 權重 2.0\n2. 商業變現力 (Commerciality) — 權重 2.0\n3. 創新與差異化 (Novelty) — 權重 1.5\n4. 社群吸引力 (Social Media Appeal) — 權重 1.5\n5. 在地化痛點契合度 (Taiwan Market) — 權重 3.0\n\n總分計算公式： (可行性×2.0) + (商業性×2.0) + (新穎性×1.5) + (社群吸引力×1.5) + (台灣市場×3.0)\n\n分類標籤（至多三個）：SaaS工具、行銷自動化、開發者工具、教育知識、電商零售、求職招聘、內容創作、客服溝通、數據分析、諮詢服務\n\n輸出格式（僅 JSON）：\n{\"feasibility_score\":0,\"commerciality_score\":0,\"novelty_score\":0,\"threads_appeal_score\":0,\"taiwan_market_score\":0,\"total_score\":0,\"summary\":\"繁體中文3-5句重點摘要\",\"business_opportunity\":\"繁體中文200-300字商業機會分析\",\"threads_angle\":\"繁體中文50-100字社群發文建議\", \"tags\": [\"SaaS工具\",\"內容創作\"]}"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 1.9,
+        "position": [
+          448,
+          288
+        ],
+        "id": "e97c1f1e-fa54-4352-bede-4621dcb3ac3d",
+        "name": "AI Scoring Agent"
+      },
+      {
+        "parameters": {
+          "model": "google/gemini-3.1-flash-lite-preview",
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+        "typeVersion": 1,
+        "position": [
+          384,
+          656
+        ],
+        "id": "df30ac72-a54d-4aa8-ab57-26adb2801d0f",
+        "name": "OpenRouter Chat Model1",
+        "credentials": {
+          "openRouterApi": {
+            "id": "YOUR_OPENROUTER_CREDENTIAL_ID",
+            "name": "OpenRouter account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsonSchemaExample": "{\"feasibility_score\":0,\"commerciality_score\":0,\"novelty_score\":0,\"threads_appeal_score\":0,\"taiwan_market_score\":0,\"total_score\":0,\"summary\":\"繁體中文3-5句重點摘要\",\"business_opportunity\":\"繁體中文200-300字商業機會分析\",\"threads_angle\":\"繁體中文50-100字社群發文建議\", \"tags\": [\"SaaS工具\",\"內容創作\"]}",
+          "autoFix": true
+        },
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "typeVersion": 1.3,
+        "position": [
+          528,
+          496
+        ],
+        "id": "27d634c9-64bb-43c7-a4a5-ee59332fa4e8",
+        "name": "Structured Output Parser"
+      },
+      {
+        "parameters": {
+          "mode": "combine",
+          "combineBy": "combineByPosition",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          896,
+          112
+        ],
+        "id": "ed364d02-8642-45e6-a039-925be16c69f3",
+        "name": "Merge"
+      },
+      {
+        "parameters": {
+          "operation": "appendOrUpdate",
+          "documentId": {
+            "__rl": true,
+            "value": "YOUR_GOOGLE_SHEET_ID",
+            "mode": "list",
+            "cachedResultName": "Reddit 商業機會"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": "gid=0",
+            "mode": "list",
+            "cachedResultName": "工作表1"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "標題": "={{ $json.title }}",
+              "日期": "={{ $json.created_time }}",
+              "可行性": "={{ $json.output.feasibility_score }}",
+              "商業性": "={{ $json.output.commerciality_score }}",
+              "新穎性": "={{ $json.output.novelty_score }}",
+              "台灣市場適用性": "={{ $json.output.taiwan_market_score }}",
+              "社群吸引力": "={{ $json.output.threads_appeal_score }}",
+              "總分": "={{ $json.output.total_score }}",
+              "重點整理": "={{ $json.output.summary }}",
+              "商業機會分析": "={{ $json.output.business_opportunity }}",
+              "Threads切入角度": "={{ $json.output.threads_angle }}",
+              "原始URL": "={{ $json.url }}",
+              "Reddit連結": "={{ $json.permalink }}",
+              "Subreddit": "={{ $json.subreddit }}",
+              "留言數": "={{ $json.comments }}",
+              "按讚數": "={{ $json.upvotes }}",
+              "類別": "={{ $json.output.tags }}"
+            },
+            "matchingColumns": [
+              "原始URL"
+            ]
+          },
+          "options": {}
+        },
+        "id": "6a67064f-758a-44e2-b0b3-3fc4394be9fc",
+        "name": "Save to Google Sheets",
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.5,
+        "position": [
+          1360,
+          96
+        ],
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+            "name": "Google Sheets account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "documentId": {
+            "__rl": true,
+            "value": "YOUR_GOOGLE_SHEET_ID",
+            "mode": "list",
+            "cachedResultName": "Reddit 商業機會"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": "gid=0",
+            "mode": "list",
+            "cachedResultName": "工作表1"
+          },
+          "options": {}
+        },
+        "id": "855308a4-01e1-4c50-84c9-9fde07c8d58b",
+        "name": "Get Dataset",
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.5,
+        "position": [
+          -1024,
+          112
+        ],
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+            "name": "Google Sheets account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();                                                                                                   \nconst urls = items.map(item => item.json['原始URL']).filter(url => url);\nreturn [{ json: { urls } }];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -848,
+          112
+        ],
+        "id": "047bef8c-89e7-439d-a775-311f6fcb7496",
+        "name": "Get Existing Record URLs"
+      }
+    ],
+    "connections": {
+      "Code": {
+        "main": [
+          [
+            {
+              "node": "AI Content Classifier",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Reddit Search": {
+        "main": [
+          [
+            {
+              "node": "Merge Results",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get Dataset",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Filter High Potential": {
+        "main": [
+          [
+            {
+              "node": "Save to Google Sheets",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Reddit Search AI": {
+        "main": [
+          [
+            {
+              "node": "Merge Results",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Reddit Search Builder": {
+        "main": [
+          [
+            {
+              "node": "Merge Results",
+              "type": "main",
+              "index": 2
+            }
+          ]
+        ]
+      },
+      "Merge Results": {
+        "main": [
+          [
+            {
+              "node": "Code",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenRouter Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Content Classifier",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Content Classifier": {
+        "main": [
+          [
+            {
+              "node": "AI Scoring Agent",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Scoring Agent": {
+        "main": [
+          [
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "OpenRouter Chat Model1": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Scoring Agent",
+              "type": "ai_languageModel",
+              "index": 0
+            },
+            {
+              "node": "Structured Output Parser",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Structured Output Parser": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "AI Scoring Agent",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge": {
+        "main": [
+          [
+            {
+              "node": "Filter High Potential",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Dataset": {
+        "main": [
+          [
+            {
+              "node": "Get Existing Record URLs",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Existing Record URLs": {
+        "main": [
+          [
+            {
+              "node": "Reddit Search",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Reddit Search AI",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Reddit Search Builder",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "pinData": {},
+    "meta": {
+      "templateCredsSetupCompleted": true
+    }
+  }

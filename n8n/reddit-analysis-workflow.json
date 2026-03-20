@@ -1,0 +1,845 @@
+{
+  "name": "Reddit商業機會分析寫資料庫",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const existingUrls = new Set($(\"Get Existing Record URLs\").first().json.urls || []);    \nconst now = Date.now();\nconst twoDaysInMs = 2.5 * 24 * 60 * 60 * 1000;\n\n// 合併所有 items 的 children 並去重，同時統計來源\nconst sourceNames = ['創業類', 'AI類', 'Builder類'];\nconst stats = [];\nconst allChildren = [];\nconst seen = new Set();\n\nfor (let i = 0; i < items.length; i++) {\n  const children = items[i].json.data?.children || [];\n  let count = 0;\n  for (const child of children) {\n    const id = child.data?.id;\n    if (id && !seen.has(id)) {\n      seen.add(id);\n      allChildren.push(child);\n      count++;\n    }\n  }\n  stats.push(`${sourceNames[i] || 'Source ' + i}: ${children.length} 筆 (去重後新增 ${count} 筆)`);\n}\n\n// 統計輸出到 console\nconsole.log(`📊 來源統計：${stats.join(' | ')} | 合併去重: ${allChildren.length} 筆`);\n\n// 篩選 + 排序 + 取前 40\nconst filtered = allChildren\n  .filter(post => {\n    const createdTime = post.data.created_utc * 1000;\n    const totalScore = post.data.score + post.data.num_comments;\n    const permalink = `https://www.reddit.com${post.data.permalink}`;\n    if (existingUrls.has(permalink)) return false;\n    return now - createdTime <= twoDaysInMs && totalScore > 80;\n  })\n  .sort((a, b) => {\n    const scoreA = a.data.score + a.data.num_comments;\n    const scoreB = b.data.score + b.data.num_comments;\n    return scoreB - scoreA;\n  })\n  .slice(0, 40);\n\nconsole.log(`📊 符合條件: ${filtered.length} 筆 (2天內, score+comments>80, top 40)`);\n\nreturn filtered.map(post => {\n  const p = post.data;\n  return {\n    json: {\n      title: p.title,\n      selftext: p.selftext,\n      upvotes: p.score,\n      url: p.url,\n      comments: p.num_comments,\n      author: p.author,\n      subreddit: p.subreddit,\n      permalink: `https://www.reddit.com${p.permalink}`,\n      created_time: new Date(p.created_utc * 1000).toISOString(),\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        112
+      ],
+      "id": "36e63a3a-9716-44b9-b868-d4e11b4490eb",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "url": "https://oauth.reddit.com/r/SideProject+Business_Ideas+ProductManagement+solopreneurs+IndieHackers+NoCode+Passive_Income/top",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "redditOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "t",
+              "value": "week"
+            },
+            {
+              "name": "limit",
+              "value": "500"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "my-n8n-bot"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -576,
+        -80
+      ],
+      "id": "3669a3ba-44a5-4470-8403-48fb140c364b",
+      "name": "Reddit Search",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "redditOAuth2Api": {
+          "id": "YOUR_REDDIT_CREDENTIAL_ID",
+          "name": "Reddit account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1,
+                3,
+                5,
+                0
+              ],
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1248,
+        112
+      ],
+      "id": "496a6461-90fb-45b1-9ad1-5108dd8b2340",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "score-check",
+              "leftValue": "={{ $json.output.total_score }}",
+              "rightValue": 70,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-scores-001",
+      "name": "Filter High Potential",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://oauth.reddit.com/r/AI_Agents+AIautomation+ChatGPTCoding+PromptEngineering+LocalLLaMA/top",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "redditOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "t",
+              "value": "week"
+            },
+            {
+              "name": "limit",
+              "value": "500"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "my-n8n-bot"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "reddit-search-2",
+      "name": "Reddit Search AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -576,
+        112
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "redditOAuth2Api": {
+          "id": "YOUR_REDDIT_CREDENTIAL_ID",
+          "name": "Reddit account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://oauth.reddit.com/r/SaaS+buildinpublic+microsaas+Automate+n8n/top",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "redditOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "t",
+              "value": "week"
+            },
+            {
+              "name": "limit",
+              "value": "500"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "my-n8n-bot"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "reddit-search-3",
+      "name": "Reddit Search Builder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -576,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "redditOAuth2Api": {
+          "id": "YOUR_REDDIT_CREDENTIAL_ID",
+          "name": "Reddit account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "id": "merge-results-001",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -352,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "model": "google/gemini-2.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        176,
+        336
+      ],
+      "id": "f58f2ded-ab39-4697-ac29-7ac0a1b99375",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "YOUR_OPENROUTER_CREDENTIAL_ID",
+          "name": "OpenRouter account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputText": "=你是一位 AI 商業應用築選專家。請判斷以下 Reddit 貼文是否與「AI 商業應用」相關。\n\n相關的定義包括：\n- AI 自動化、AI Agent 應用（包含 n8n、Make.com、Zapier 等工具）\n- 用 AI 解決商業問題（marketing、HR、sales、房仲、醫療、教育、小商家等）\n- SaaS / Micro SaaS / 創業點子與商業模式\n- No-code / Low-code 自動化工具應用\n- 對非技術背景的人用 AI 解決痛點的商業機會\n- 用 AI 提升生產力、效率的實際案例\n\n不相關的例子：\n- 純技術討論（模型訓練、演算法研究、benchmark）且無商業應用\n- 迷因、搞笑、廢文\n- 純產品發表無商業洞察\n- AI 藝術、AI 生成圖片等娛樂性內容\n\n---\n標題：{{ $json.title }}\n內容：{{ $json.selftext }}\n社群：r/{{ $json.subreddit }}\n\n---\n🧾 Output:\nReturn \"true\" if the video is relevant to AI商業應用\nReturn \"false\" if the video is not relevant to AI商業應用",
+        "categories": {
+          "categories": [
+            {
+              "category": "true"
+            },
+            {
+              "category": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "typeVersion": 1,
+      "position": [
+        96,
+        112
+      ],
+      "id": "f137d7fd-e521-499c-8cfc-f0bca9090fb7",
+      "name": "AI影片分類器",
+      "notesInFlow": true,
+      "notes": "使用 LLM 判斷影片是否為實用 AI 工具內容 (is_tool / not_tool)。僅 is_tool 類別會進入下一步。分類規則可在 inputText 中修改。"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=**待評估點子：**\n標題：{{ $json.title }}\n內容：{{ $json.selftext }}\n社群：r/{{ $json.subreddit }}\nUpvotes：{{ $json.upvotes }}\n留言數：{{ $json.comments }}\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=你是一位專精於精實創業（Lean Startup）與台灣中小企業數位轉型的商業分析師。請針對以下來自 Reddit 的點子進行評分（每個維度 1-10 分），並且生成一句中文15-20字中文標題，以及創業靈感分類，並以嚴格 JSON 格式回覆。\n\n🚀 創業點子評鑑標準 (Visual Scoring Guide)\n評分標準與權重（總分 100）：\n\n1. 精實可行性 (Lean Feasibility) — 權重 2.0\n核心邏輯： 1-2 名工程師、一個月內 MVP、低資本支出。\n1 分 (極難實現)： 需要研發硬體設備、申請複雜的政府執照、或是需要處理海量數據進行模型預訓練。開發週期通常超過 6 個月，且初期需要投入百萬台幣以上的資金。\n10 分 (極易實現)： 完全基於現有的 API（如 OpenAI, Stripe, Line Pay）開發，純軟體 SaaS。前端可用現成模板，後端邏輯單純。1 名工程師在兩週內即可做出核心功能，開發成本幾乎為零。\n\n2. 商業變現力 (Commerciality) — 權重 2.5\n核心邏輯： 商業模式清晰、客戶付費意願高。\n1 分 (難變現)： 屬於「維他命」型產品（有它很好，沒它也沒差）。目標客群不明確，或是需要極大規模的使用者基數才能開始廣告變現（如通訊軟體）。\n10 分 (易變現)： 屬於「止痛藥」型產品。直接幫客戶賺錢或省錢。商業模式是清晰的訂閱制 (SaaS) 或按次計費，客戶（如診所、餐廳）有明確的編列預算來解決這個問題。\n\n3. 創新與差異化 (Novelty) — 權重 1.5\n核心邏輯： 獨特切入點、比現有大型軟體更靈活。\n1 分 (紅海市場)： 市場上已有數十個成熟的競品（如一般的 POS 系統、待辦清單 App）。進入門檻低，最終只能陷入價格戰，且沒有獨特的 AI 應用。\n10 分 (藍海市場)： 運用最新的 AI 技術（如 VLM 或 Agent 工作流）去解決一個長期被忽略、或一直用低效人力處理的老問題。或是將國外剛興起的模式，首創地帶入特定垂直產業。\n\n4. 社群吸引力 (Social Media Appeal) — 權重 1.5\n核心邏輯： 具備話題性、易引起開發者/行銷圈共鳴。\n1 分 (枯燥無味)： 過於後端的基礎設施或過於專業的 B2B 流程，很難用一張截圖或一段 50 字的短文解釋其價值，無法引起非專業人士的興趣。\n10 分 (病毒式潛力)： 產品具有強大的「視覺衝擊」或「強烈痛點共鳴」。發文能引發討論（例如：幫老闆省掉一個行政人力的機器人），且容易在開發者圈引發「這怎麼做的？」的技術討論。\n\n5. 在地化痛點契合度 (Taiwan Market) — 權重 2.5\n核心邏輯： 解決台灣特定族群（缺工、數位化低、報表繁瑣）的痛點。\n1 分 (不符國情)： 解決的是美國稅法、或地廣人稀國家的物流問題。在台灣的法規、使用習慣（如台灣人超愛 Line）或產業結構下完全不適用。\n10 分 (完全契合)： 精準擊中台灣現狀，如：解決餐飲業嚴重缺工的 AI 點餐、針對台灣診所繁瑣的掛號流程優化、或是將台灣小商家常用的 LINE 官方帳號變成全自動 AI 助理。\n\n總分計算公式： (可行性×2.0) + (商業性×2.0) + (新穎性×1.5) + (Threads吸引力×1.5) + (台灣市場×3.0)\n\n除了評分以外，你還需要幫我生成15-20字靈感中文標題，並且針對這個創業點子分類。一個創業點子可以有多種類別(至多三個，最少一個)。請幫我把它們用一個列表組合起來。只能包含以下類別：如果都不屬於的話，請用“其他”。\n\n15-20字中文標題: 幫我根據以下內容生成一個可以總結這個 AI 商業機會的中文標題，大概15-20個字\n範例：\n(1) 整合碎片化社交平台API提供企業自動化行銷訂閱服務\n(2) AI驅動求職自動化工具解決人力銀行投遞效率與媒合痛點\n\n AI 創業點子分類：                                                                         \n  - SaaS工具 — SaaS 產品、訂閱制軟體                                                                            \n  - 行銷自動化 — 社群管理、內容行銷、SEO                                                                        \n  - 開發者工具 — API、SDK、開發輔助                                                                           \n  - 教育知識 — 課程、教學、知識付費                                                                             \n  - 電商零售 — 電商工具、零售解決方案                                                                         \n  - 求職招聘 — 求職、HR、人才媒合\n  - 內容創作 — 影片、寫作、設計工具\n  - 客服溝通 — 客服系統、聊天機器人\n  - 數據分析 — 數據工具、商業智慧\n  - 諮詢服務 — 顧問、審計、專業服務\n\n\n輸出格式（重要！！ 只能輸出JSON format, 不要任何不相關的文字符號）\n{\"feasibility_score\":0,\"commerciality_score\":0,\"novelty_score\":0,\"threads_appeal_score\":0,\"taiwan_market_score\":0,\"total_score\":0,\"summary\":\"繁體中文3-5句重點摘要\",\"business_opportunity\":\"繁體中文200-300字商業機會分析，說明目標客群、解決的痛點、可能的商業模式、在台灣市場的機會\",\"threads_angle\":\"繁體中文50-100字Threads發文建議\", \"tags\": [\"SaaS工具\",\"內容創作\"], \"chinese_title\": \"AI驅動求職自動化工具解決人力銀行投遞效率與媒合痛點\"}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        448,
+        288
+      ],
+      "id": "e97c1f1e-fa54-4352-bede-4621dcb3ac3d",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": "google/gemini-3.1-flash-lite-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        384,
+        656
+      ],
+      "id": "df30ac72-a54d-4aa8-ab57-26adb2801d0f",
+      "name": "OpenRouter Chat Model1",
+      "credentials": {
+        "openRouterApi": {
+          "id": "YOUR_OPENROUTER_CREDENTIAL_ID",
+          "name": "OpenRouter account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"feasibility_score\":0,\"commerciality_score\":0,\"novelty_score\":0,\"threads_appeal_score\":0,\"taiwan_market_score\":0,\"total_score\":0,\"summary\":\"繁體中文3-5句重點摘要\",\"business_opportunity\":\"繁體中文200-300字商業機會分析，說明目標客群、解決的痛點、可能的商業模式、在台灣市場的機會\",\"threads_angle\":\"繁體中文50-100字Threads發文建議\", \"tags\": [\"SaaS工具\",\"內容創作\"], \"chinese_title\": \"AI驅動求職自動化工具解決人力銀行投遞效率與媒合痛點\"}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        528,
+        496
+      ],
+      "id": "27d634c9-64bb-43c7-a4a5-ee59332fa4e8",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        896,
+        112
+      ],
+      "id": "ed364d02-8642-45e6-a039-925be16c69f3",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Reddit 商業機會"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "工作表1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "標題": "={{ $json.title }}",
+            "日期": "={{ $json.created_time }}",
+            "可行性": "={{ $json.output.feasibility_score }}",
+            "商業性": "={{ $json.output.commerciality_score }}",
+            "新穎性": "={{ $json.output.novelty_score }}",
+            "台灣市場適用性": "={{ $json.output.taiwan_market_score }}",
+            "社群吸引力": "={{ $json.output.threads_appeal_score }}",
+            "總分": "={{ $json.output.total_score }}",
+            "重點整理": "={{ $json.output.summary }}",
+            "商業機會分析": "={{ $json.output.business_opportunity }}",
+            "Threads切入角度": "={{ $json.output.threads_angle }}",
+            "原始URL": "={{ $json.url }}",
+            "Reddit連結": "={{ $json.permalink }}",
+            "Subreddit": "={{ $json.subreddit }}",
+            "留言數": "={{ $json.comments }}",
+            "按讚數": "={{ $json.upvotes }}",
+            "類別": "={{ $json.output.tags }}",
+            "中文標題": "={{ $json.chinese_title }}",
+            "來源": "reddit"
+          },
+          "matchingColumns": [
+            "原始URL"
+          ],
+          "schema": [
+            {
+              "id": "日期",
+              "displayName": "日期",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "標題",
+              "displayName": "標題",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "中文標題",
+              "displayName": "中文標題",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "留言數",
+              "displayName": "留言數",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "按讚數",
+              "displayName": "按讚數",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "可行性",
+              "displayName": "可行性",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "商業性",
+              "displayName": "商業性",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "新穎性",
+              "displayName": "新穎性",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "社群吸引力",
+              "displayName": "社群吸引力",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "台灣市場適用性",
+              "displayName": "台灣市場適用性",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "總分",
+              "displayName": "總分",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "重點整理",
+              "displayName": "重點整理",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "商業機會分析",
+              "displayName": "商業機會分析",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Threads切入角度",
+              "displayName": "Threads切入角度",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "原始URL",
+              "displayName": "原始URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reddit連結",
+              "displayName": "Reddit連結",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "X連結",
+              "displayName": "X連結",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "FB連結",
+              "displayName": "FB連結",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Subreddit",
+              "displayName": "Subreddit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "類別",
+              "displayName": "類別",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "來源",
+              "displayName": "來源",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "6a67064f-758a-44e2-b0b3-3fc4394be9fc",
+      "name": "Save to Google Sheets1",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1360,
+        96
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Reddit 商業機會"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "工作表1"
+        },
+        "options": {}
+      },
+      "id": "855308a4-01e1-4c50-84c9-9fde07c8d58b",
+      "name": "Get Dataset",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1024,
+        112
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();                                                                                                   \nconst urls = items.map(item => item.json['原始URL']).filter(url => url);\nreturn [{ json: { urls } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -848,
+        112
+      ],
+      "id": "047bef8c-89e7-439d-a775-311f6fcb7496",
+      "name": "Get Existing Record URLs"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "AI影片分類器",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter High Potential": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheets1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reddit Search": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reddit Search AI": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Reddit Search Builder": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI影片分類器",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI影片分類器": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Structured Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Filter High Potential",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Dataset": {
+      "main": [
+        [
+          {
+            "node": "Get Existing Record URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing Record URLs": {
+      "main": [
+        [
+          {
+            "node": "Reddit Search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reddit Search AI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reddit Search Builder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f7406fc0-ccc3-441c-8074-c520ce058924",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "qt0umq2Se3b1Wuou",
+  "tags": []
+}
